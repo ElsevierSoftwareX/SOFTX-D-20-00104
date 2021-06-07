@@ -1,0 +1,164 @@
+load "gmsh"
+load "msh3"
+load "iovtk"
+load "medit"
+load "lapack"
+include "getARGV.idp"
+
+string meshFileName = getARGV("-mesh", "mesh.msh");
+string u1FileName = getARGV("-u1", "u1.sol");
+string u2FileName = getARGV("-u2", "u2.sol");
+string u3FileName = getARGV("-u3", "u3.sol");
+
+string outDirNameDisp = getARGV("-outdirdisp", "disp.vtu");
+string outDirNameStrainsp = getARGV("-outdirstrainsp", "strainsp.txt");
+string outDirNameStresses = getARGV("-outdirstresses", "stresses.txt");
+string outDirNameStressesp = getARGV("-outdirstressesp", "stressesp.txt");
+string outDirNameStrains = getARGV("-outdirstrains", "strains.txt");
+string outDirNameVTK = getARGV("-outdirvtk", "principal.vtu");
+
+int writeDisp = getARGV("-writedisp", 0);
+int writeVtk = getARGV("-writevtk", 0);
+
+int Gel = getARGV("-ngel", 2);
+int Sprout = getARGV("-ncell", 1);
+real EGel = getARGV("-egel", 1645.);
+real nuGel = getARGV("-nugel", 0.34);
+real ESprout = getARGV("-ecell", 100.0e-6);
+real nuSprout = getARGV("-nucell", 0.45);
+
+mesh3 Mesh = gmshload3(meshFileName);
+
+
+fespace SpaceP0(Mesh, P0);
+fespace SpaceP1(Mesh, P1);
+
+
+SpaceP1 ux=0, uy=0, uz=0;
+SpaceP1 reg = region;
+
+
+
+ux[] = readsol(u1FileName);
+uy[] = readsol(u2FileName);
+uz[] = readsol(u3FileName);
+
+
+
+if (writeDisp)
+{
+  int[int] orderOut(7);
+  orderOut = 0;
+  savevtk(outDirNameDisp, Mesh, region, ux, uy, uz, dataname="reg u v w", order=orderOut);
+}
+
+SpaceP0 Young = EGel * (region == Gel) + ESprout * (region == Sprout);
+SpaceP0 poisson = nuGel * (region == Gel) + nuSprout * (region == Sprout);
+SpaceP0 tmp = 1.0 + poisson;
+SpaceP0 mu = Young  / (2.0 * tmp);
+SpaceP0 lambda = Young * poisson / (tmp * (1.0 - 2.0 * poisson));
+
+SpaceP1 Sxx, Syy, Szz, Sxy, Syz, Sxz;
+SpaceP1 exx, eyy, ezz, exy, eyz, exz;
+
+SpaceP1 XX = dx(ux);
+SpaceP1 XY = dy(ux);
+SpaceP1 XZ = dz(ux);
+SpaceP1 YY = dy(uy);
+SpaceP1 YX = dx(uy);
+SpaceP1 YZ = dz(uy);
+SpaceP1 ZZ = dz(uz);
+SpaceP1 ZX = dx(uz);
+SpaceP1 ZY = dy(uz);
+
+SpaceP1 PS1; // max
+SpaceP1 PS2; // mid
+SpaceP1 PS3; // min
+SpaceP1 PE1; // max
+SpaceP1 PE2; // mid
+SpaceP1 PE3; // min
+
+complex[int] vp(3);
+complex[int,int] VP(3,3);
+int nn;
+
+for (int i = 0; i < SpaceP1.ndof; i++)
+{
+  matrix F = [[1+XX[][i], XY[][i], XZ[][i]],
+              [YX[][i], 1+YY[][i], YZ[][i]],
+              [ZX[][i], ZY[][i], 1+ZZ[][i]]];
+
+  matrix EL = F' * F;
+  // matrix EL = F * F';
+
+  real[int,int] A = [[(EL(0,0)-1)/2, EL(0,1)/2, EL(0,2)/2],
+                    [EL(1,0)/2, (EL(1,1)-1)/2, EL(1,2)/2],
+                    [EL(2,0)/2, EL(2,1)/2, (EL(2,2)-1)/2]];
+
+  nn = dgeev(A, vp, VP);
+  vp[0] = real(vp[0]);
+  vp[1] = real(vp[1]);
+  vp[2] = real(vp[2]);
+  PE1[][i] = real(vp.max);
+  PE3[][i] = real(vp.min);
+  for (int j=0; j<3; j++)
+  	if (real(vp[j]) != real(vp.min) && real(vp[j]) != real(vp.max))
+  		PE2[][i] = real(vp[j]);
+
+  exx[][i] = (EL(0,0)-1)/2;
+  eyy[][i] = (EL(1,1)-1)/2;
+  ezz[][i] = (EL(2,2)-1)/2;
+  exy[][i] = EL(0,1)/2;
+  exz[][i] = EL(0,2)/2;
+  eyz[][i] = EL(1,2)/2;
+}
+
+Sxx = (2 * mu + lambda) * exx + lambda * (eyy + ezz);
+Syy = (2 * mu + lambda) * eyy + lambda * (exx + ezz);
+Szz = (2 * mu + lambda) * ezz + lambda * (exx + eyy);
+Sxy = 2 * mu * exy;
+Sxz = 2 * mu * exz;
+Syz = 2 * mu * eyz;
+
+for (int i = 0; i < SpaceP1.ndof; i++)
+{
+  real[int,int] A = [[Sxx[][i], Sxy[][i], Sxz[][i]],
+                     [Sxy[][i], Syy[][i], Syz[][i]],
+                     [Sxz[][i], Syz[][i], Szz[][i]]];
+  nn = dgeev(A, vp, VP);
+  if (nn == 0)
+  {
+    vp[0] = real(vp[0]);
+    vp[1] = real(vp[1]);
+    vp[2] = real(vp[2]);
+    PS1[][i] = real(vp.max);
+    PS3[][i] = real(vp.min);
+    for (int j=0; j<3; j++)
+      if (real(vp[j]) != real(vp.min) && real(vp[j]) != real(vp.max))
+        PS2[][i] = real(vp[j]);
+  }
+}
+
+ofstream output1(outDirNameStrainsp);
+ofstream output2(outDirNameStresses);
+ofstream output3(outDirNameStressesp);
+ofstream output4(outDirNameStrains);
+
+for (int i = 0; i < SpaceP1.ndof; i++)
+{
+  output1 << i+1 << " " << reg[][i] << " " << PE3[][i] << " " << PE2[][i] << " " << PE1[][i] << " " << endl;
+  output4 << i+1 << " " << reg[][i] << " " << exx[][i] << " " << eyy[][i] << " " << ezz[][i] << " "
+          << exy[][i] << " " << exz[][i] << " " << eyz[][i] << " " << endl;
+  output3 << i+1 << " " << reg[][i] << " " << PS3[][i] << " " << PS2[][i] << " " << PS1[][i] << " " << endl;
+  output2 << i+1 << " " << reg[][i] << " " << Sxx[][i] << " " << Syy[][i] << " " << Szz[][i] << " "
+          << Sxy[][i] << " " << Sxz[][i] << " " << Syz[][i] << " " << endl;
+}
+
+if (writeVtk)
+{
+  int[int] orderOut(22);
+  orderOut = 1;
+  savevtk(outDirNameVTK, Mesh, ux, uy, uz, PS1, PS2, PS3, PE1, PE2, PE3,
+          Sxx, Syy, Szz, Sxy, Sxz, Syz, exx, eyy, ezz, exy, exz, eyz,
+          dataname="u v w SP_Max SP_Mid SP_Min EP_Max EP_Mid EP_Min S11 S22 S33 S12 S13 S23 E11 E22 E33 E12 E13 E23", order=orderOut);
+}

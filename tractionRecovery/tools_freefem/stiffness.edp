@@ -1,0 +1,40 @@
+load "msh3"
+load "gmsh"
+include "getARGV.idp"
+
+macro def(i)[i, i#B, i#C]// EOM
+real Sqrt = sqrt(2.0);
+macro epsilon(u)[dx(u), dy(u#B), dz(u#C), (dz(u#B) + dy(u#C)) / Sqrt, (dz(u) + dx(u#C)) / Sqrt, (dy(u) + dx(u#B)) / Sqrt]// EOM
+macro div(u)(dx(u) + dy(u#B) + dz(u#C))// EOM
+func Pk = [P1, P1, P1];
+
+string meshFileName = getARGV("-mesh", "mesh.msh");
+string outputName = getARGV("-out", "matrix.txt");
+
+mesh3 Mesh = gmshload3(meshFileName);
+
+fespace SpaceP0(Mesh, P0);
+
+int Gel = getARGV("-ngel", 2);
+int Sprout = getARGV("-ncell", 1);
+real EGel = getARGV("-egel", 1645.);
+real nuGel = getARGV("-nugel", 0.34);
+real ESprout = getARGV("-ecell", 100.0e-6);
+real nuSprout = getARGV("-nucell", 0.45);
+
+real f = 0;
+SpaceP0 Young = EGel * (region == Gel) + ESprout * (region == Sprout);
+SpaceP0 poisson = nuGel * (region == Gel) + nuSprout * (region == Sprout);
+SpaceP0 tmp = 1.0 + poisson;
+SpaceP0 mu = Young  / (2.0 * tmp);
+SpaceP0 lambda = Young * poisson / (tmp * (1.0 - 2.0 * poisson));
+
+varf vPb(def(u), def(v)) = int3d(Mesh)(lambda * div(u) * div(v) + 2.0 * mu * (epsilon(u)' * epsilon(v)))
+                         + int3d(Mesh)(f * vC)
+                         ;
+
+fespace Wh(Mesh, Pk);
+matrix A = vPb(Wh, Wh);
+
+ofstream output(outputName);
+output << A;
