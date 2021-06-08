@@ -1,0 +1,105 @@
+// **************** Image Types ****************
+
+(FixedInternalImagePixelType "pxType")
+(MovingInternalImagePixelType "pxType")
+
+(FixedImageDimension imDim)
+(MovingImageDimension imDim)
+
+
+
+// **************** Main Components ****************
+
+(Registration "MultiResolutionRegistration")
+(Interpolator "BSplineInterpolator")
+(ResampleInterpolator "FinalBSplineInterpolator")
+(Resampler "DefaultResampler")
+
+(FixedImagePyramid "FixedSmoothingImagePyramid")
+(MovingImagePyramid "MovingSmoothingImagePyramid")
+
+(Transform "BSplineTransform")
+(Optimizer "optimType")
+(Metric "metricType")
+
+
+
+// **************** Transformation ****************
+
+
+(FinalGridSpacingInVoxels xyGridMin xyGridMin zGridMin)
+(GridSpacingSchedule gridSpacingScheduleVal)
+(PassiveEdgeWidth passiveEdgeGridPointNum) 
+(HowToCombineTransforms "Compose")
+
+
+
+// **************** Similarity Metric ****************
+
+
+(NumberOfHistogramBins numHistBinVal)
+
+
+
+
+// **************** Multiresolution ****************
+
+
+(NumberOfResolutions numResolutionVal)
+(ImagePyramidSchedule imPyramidScheduleVal)
+
+
+
+
+// **************** Optimizer ****************
+
+
+(MaximumNumberOfIterations iterNum)
+(AutomaticParameterEstimation "true")
+(UseAdaptiveStepSizes "true")
+(ASGDParameterEstimationMethod "DisplacementDistribution")
+
+
+
+
+
+// **************** Image sampling ****************
+
+
+(ImageSampler "imageSamplerVal")
+(NumberOfSpatialSamples sampleNumVal)
+(NewSamplesEveryIteration "newSamplesFlag")
+// (MaximumNumberOfSamplingAttempts 3)
+
+
+// **************** Interpolation and Resampling ****************
+
+
+// Order of B-Spline interpolation used during registration/optimisation.
+(BSplineInterpolationOrder 1)
+
+// Order of B-Spline interpolation used for applying the final deformation.
+(FinalBSplineInterpolationOrder 3)
+
+
+
+
+// **************** Several ****************
+
+
+(UseDirectionCosines "true")
+(ErodeMask "false")
+(ShowExactMetricValue "false")
+
+
+
+
+// **************** Output ****************
+
+
+(ResultImageFormat "outputImType")
+(WriteResultImage "false")
+(WriteTransformParametersEachIteration "false")
+(WriteTransformParametersEachResolution "true")
+(WriteResultImageAfterEachResolution "false")
+(WritePyramidImagesAfterEachResolution "false")
